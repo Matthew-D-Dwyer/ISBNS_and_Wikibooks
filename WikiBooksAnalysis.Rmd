@@ -1,0 +1,417 @@
+---
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+  number_sections: true
+ 
+title: "Adding ISBNs to Wiki books"
+author: "[Matthew-D-Dwyer](https://github.com/Matthew-D-Dwyer)"
+date: "`r paste0('Last Run: ', format(Sys.time(), '%A %d-%B-%Y'))`"
+params: 
+  param1: "Don't Forget about params"
+
+---
+
+<style>
+
+#TOC {
+ font-family: Calibri; 
+ font-size: 16px;
+ border-color: #3D68DF;
+ background: #3D68DF;
+}
+
+body {
+  font-family: Garamond;
+  font-size: 16px; 
+  border-color: #D0D0D0;
+  background-color: #D0D0D0;
+  color: #1A1A1A;
+}
+
+pre {
+  color: #1A1A1A
+  background: #D0D0D0;
+  background-color: #D0D0D0
+  font-family: Calibri; 
+  
+}
+
+</style>
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+knitr::opts_chunk$set(collapse = TRUE)
+
+knitr::opts_chunk$set(warning = TRUE)
+
+knitr::opts_chunk$set(message = TRUE)
+
+knitr::opts_chunk$set(include = TRUE)
+
+custom_black <- '1A1A1A'
+custom_white <- 'C0C0C0'
+custom_grey_dark <- '6F6F6F'
+custom_grey_light <- 'B2B2B2'
+custom_accent_blue <- '3D6BFF'
+
+```
+
+```{r libraries etc., message = FALSE }
+
+library(tidyverse)
+library(dplyr)
+library(RSQLite)
+
+```
+
+### How many books? 
+
+The first thing I wanted to check is how many books there are in each of the different languages.
+
+This code threw errors on my machine indicating that not all rows were retrieved however I was able to check the source and my result is a full data set. 
+
+```{r dataload}
+
+wb_data_base <- file.path('/Users',
+                          'macatron',
+                          'Documents',
+                          'Data Analysis',
+                          'R',
+                          'wiki--books',
+                          'wikibooks.sqlite')
+
+#creating connection
+con <- DBI::dbConnect(RSQLite::SQLite(), wb_data_base)
+
+# Lookup to get the full language from the two character part 
+Languages <- data.frame(Abbv = c('de',
+                                 'en',
+                                 'es',
+                                 'fr',
+                                 'he',
+                                 'hu',
+                                 'it',
+                                 'ja',
+                                 'nl',
+                                 'pl',
+                                 'pt',
+                                 'ru'), 
+                        full_name = c('German', 
+                                      'English', 
+                                      'Spanish', 
+                                      'French', 
+                                      'Greek',
+                                      'Hungarian',
+                                      'Italian',
+                                      'Japanese',
+                                      'Dutch',
+                                      'Polish',
+                                      'Portuguese',
+                                      'Russian'))
+
+names_stripper <- function(full_title) 
+  #Function that removes 'Wikibooks: ' from the start of the title and everything after and including the first slash
+{
+  title_no_prefix <- full_title %>%
+  str_remove_all('Wikibooks: ')
+  
+  slash_loc <- str_locate(title_no_prefix, '/')[1]
+  
+  if (is.na(slash_loc)) {
+    title_no_suffix <- title_no_prefix } 
+  
+  else if (slash_loc > 0) {
+  title_no_suffix <- title_no_prefix %>%
+                     str_sub(1, slash_loc-1)} else {
+      print('Error Error Does Not Compute')
+      title_no_suffix <- 'Error Error Does Not Compute'
+    }
+  
+  title_no_suffix }
+
+title_counter <- function(languages_brv) 
+  # function that counts how many titles there ar in the data base for that language 
+{
+  
+  con <-  DBI::dbConnect(RSQLite::SQLite(), wb_data_base)   
+  
+  x <- dbSendQuery(con, paste0("SELECT count (*) FROM ", languages_brv), n = Inf) %>%
+    dbFetch(n =Inf)
+  
+  x <- data.frame(titles = x, Abbv = languages_brv)
+  
+}
+  
+Titles_table <- map_dfr(Languages$Abbv, title_counter)
+
+Titles_table <- Titles_table %>%
+  left_join(Languages, by = c('Abbv' = 'Abbv')) %>%
+  arrange(desc(count....)) 
+
+Titles_table <- Titles_table %>%
+   mutate(Language = factor(full_name, levels = Titles_table$full_name)) %>%
+  rename(Titles = count....)
+
+```
+
+### Plotting the number of books in each language
+
+The vast majority of books are English 
+
+```{r }
+
+Titles_table %>%
+  ggplot(aes(x = Language, y = Titles)) +
+  geom_col(fill = 'cornflower blue') +
+  geom_label(aes(label = Titles), size = 2.5) +
+  theme_minimal() +
+  labs(title = 'Wikibooks Number of Titles by Language', 
+       subtitle = 'Extraction date: Sep 09 2021',   
+       caption = 'Source: Kaggle, starter-wikibooks-dataset') +
+  coord_flip() 
+
+```
+
+### Trying to extract the ISBN 
+
+The book title information and the data base in general is pretty messy. 
+But the full text of the books often contains the ISBN and if this number can be extracted, even for a fraction of the books then this can be used to link the full text to higher quality metadata. 
+
+Starting with one book that does have ISBN in it. 
+
+```{r}
+
+#Pulling the first English Book
+Sample_full_text <- dbSendQuery(con, "SELECT * FROM en", 
+                                 n = 1) %>% 
+                     dbFetch(n = 1)
+
+ISBN_Loc <- str_locate(Sample_full_text$body_text, "ISBN: ")
+
+```
+
+Looks like no ISBN in that one, but what if I test it for some text I know is 
+in the book.
+
+```{r}
+
+Oncology_loc <- str_locate(Sample_full_text$body_text, "Oncology")
+
+```
+
+Test passed so it won't work for that book, what if I cycle through 1000 books?
+
+Again this throws errors but the result has 1,000 observations so I'm OK. 
+
+```{r}
+
+books_1000 <- dbSendQuery(con, "SELECT * FROM en", 
+                                 n = 1000) %>% 
+                     dbFetch(n = 1000)
+
+```
+
+Cycling through them all, printing found one if the 'ISBN: ' search returns a result
+
+```{r}
+
+book_list <- books_1000$body_text 
+
+for (book in book_list) {
+  
+  ISBN_Loc <- str_locate(book, 'ISBN: ')
+  
+  if (!is.na(ISBN_Loc[1])) {
+    print('Found One!')
+    
+  }}
+
+```
+
+Looks like there was one in that first thousand, does that mean about 83 in the whole English data set? 
+
+Again with the errors, but all the books load.
+
+```{r}
+
+all_books <- dbSendQuery(con, "SELECT * FROM en", 
+                                 n = Inf) %>% 
+                     dbFetch(n = Inf)
+
+Books_with_ISBN <- data.frame(title = NULL, 
+                              ISBN_Loc = NULL,
+                              Book_no = NULL)
+
+for (i in 1:length(all_books$title)) {
+  
+  ISBN_Loc <- str_locate(all_books$body_text[i], 'ISBN')
+  
+   if (!is.na(ISBN_Loc[1])) {
+     
+     Books_with_ISBN <- rbind(Books_with_ISBN, 
+                             data.frame(title = all_books$title[i], 
+                                        ISBN_Loc = ISBN_Loc[1],
+                             Book_no = i))
+     
+   } }
+
+print('Books with a possible ISBN: ')
+
+print(length(Books_with_ISBN$title))
+
+```
+
+Initially I only got 84 which is exactly 1 in a thousand, but then I re ran it without the colon after ISBN this got a much higher (but still lower than I hoped) hit rate of about 30% (2481 books). 
+
+### Pulling the actual ISBNs
+
+An ISBN is 10 or 13 digits not including the hyphens colons spaces or whatever
+
+So to start I'll just take the next 30 characters - to be cleaned up later.
+
+Printing 6 at the end so we can get an idea of what further cleaning may be required.
+
+```{r}
+
+indexes <- Books_with_ISBN$Book_no 
+
+ISBN_Loc <- Books_with_ISBN$ISBN_Loc
+
+isbn <- c()
+
+Books_with_ISBN$Full_Text <- all_books$body_text[indexes]
+
+Books_with_ISBN$ISBN <- substr(Books_with_ISBN$Full_Text, 
+                               Books_with_ISBN$ISBN_Loc,
+                               Books_with_ISBN$ISBN_Loc + 30)
+# Removing the full text to make it a bit more manageable copute wise
+
+Books_with_ISBN <- Books_with_ISBN %>% select(-Full_Text)
+
+head(Books_with_ISBN$ISBN)
+
+```
+
+Looking like a good start, all these records above look like they can be cleanable into a real ISBN numbers. 
+
+### Cleaning the ISBNs 
+
+First remove anything that isn't a number and make into a single character. 
+
+```{r}
+
+isbn_cleaner <- function(un_clean_isbn) {
+  
+  un_clean_isbn %>% 
+                      str_extract_all("[0-9]") %>%
+                      unlist() %>% 
+                      str_c(collapse = '') }
+
+Books_with_ISBN$ISBN_clean <- map_chr(Books_with_ISBN$ISBN, 
+                                     isbn_cleaner)
+
+Books_with_ISBN$ISBN_clean[1:20]
+
+```
+
+Looking at the above first 20 ISBN's it it looking pretty good. 
+
+ISBNs should have 10 or 13 digits lets see what the distribution is like. 
+
+### Extracting German ISBNs
+
+```{r }
+
+german_books <-  dbSendQuery(con, "SELECT * FROM de") %>% 
+                     dbFetch()
+
+book_list <- german_books$body_text 
+
+for (book in book_list) {
+  
+  ISBN_Loc <- str_locate(book, 'ISBN')
+  
+  if (!is.na(ISBN_Loc[1])) {
+    print('Found One!')
+    
+  }}
+
+```
+
+Looks like lots of German ones have them!
+
+Making a table of them 
+
+```{r}
+### Note need to change for German books
+indexes <- Books_with_ISBN$Book_no 
+
+ISBN_Loc <- Books_with_ISBN$ISBN_Loc
+
+isbn <- c()
+
+Books_with_ISBN$Full_Text <- all_books$body_text[indexes]
+
+Books_with_ISBN$ISBN <- substr(Books_with_ISBN$Full_Text, 
+                               Books_with_ISBN$ISBN_Loc,
+                               Books_with_ISBN$ISBN_Loc + 30)
+# Removing the full text to make it a bit more manageable copute wise
+
+Books_with_ISBN <- Books_with_ISBN %>% select(-Full_Text)
+
+head(Books_with_ISBN$ISBN)
+```
+
+
+What about Japanese? Will the same method work
+
+
+
+### Testing method on Japanese title
+
+```{r}
+
+japanese_books <-  dbSendQuery(con, "SELECT * FROM ja") %>% 
+                     dbFetch()
+
+book_list <- japanese_books$body_text 
+
+for (book in book_list) {
+  
+  ISBN_Loc <- str_locate(book, 'ISBN')
+  
+  if (!is.na(ISBN_Loc[1])) {
+    print('Found One!')
+    
+  }}
+
+```
+
+Making a table of them, how screwy are they? 
+
+```{r }
+
+### Note need to change for German books
+indexes <- Books_with_ISBN$Book_no 
+
+ISBN_Loc <- Books_with_ISBN$ISBN_Loc
+
+isbn <- c()
+
+Books_with_ISBN$Full_Text <- all_books$body_text[indexes]
+
+Books_with_ISBN$ISBN <- substr(Books_with_ISBN$Full_Text, 
+                               Books_with_ISBN$ISBN_Loc,
+                               Books_with_ISBN$ISBN_Loc + 30)
+# Removing the full text to make it a bit more manageable copute wise
+
+Books_with_ISBN <- Books_with_ISBN %>% select(-Full_Text)
+
+head(Books_with_ISBN$ISBN)
+
+```
