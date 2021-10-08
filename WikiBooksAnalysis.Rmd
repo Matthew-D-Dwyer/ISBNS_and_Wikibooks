@@ -374,44 +374,34 @@ What about Japanese? Will the same method work
 
 ### Testing method on Japanese title
 
-```{r}
-
-japanese_books <-  dbSendQuery(con, "SELECT * FROM ja") %>% 
-                     dbFetch()
-
-book_list <- japanese_books$body_text 
-
-for (book in book_list) {
-  
-  ISBN_Loc <- str_locate(book, 'ISBN')
-  
-  if (!is.na(ISBN_Loc[1])) {
-    print('Found One!')
-    
-  }}
-
-```
-
-Making a table of them, how screwy are they? 
+Making a table of Japanese books with ISBN them, how many are there? 
 
 ```{r }
 
-### Note need to change for German books
-indexes <- Books_with_ISBN$Book_no 
 
-ISBN_Loc <- Books_with_ISBN$ISBN_Loc
+all_books <- dbSendQuery(con, "SELECT * FROM ja", 
+                                 n = Inf) %>% 
+                     dbFetch(n = Inf)
 
-isbn <- c()
+Books_with_ISBN <- data.frame(title = NULL, 
+                              ISBN_Loc = NULL,
+                              Book_no = NULL)
 
-Books_with_ISBN$Full_Text <- all_books$body_text[indexes]
+for (i in 1:length(all_books$title)) {
+  
+  ISBN_Loc <- str_locate(all_books$body_text[i], 'ISBN')
+  
+   if (!is.na(ISBN_Loc[1])) {
+     
+     Books_with_ISBN <- rbind(Books_with_ISBN, 
+                             data.frame(title = all_books$title[i], 
+                                        ISBN_Loc = ISBN_Loc[1],
+                             Book_no = i))
+     
+   } }
 
-Books_with_ISBN$ISBN <- substr(Books_with_ISBN$Full_Text, 
-                               Books_with_ISBN$ISBN_Loc,
-                               Books_with_ISBN$ISBN_Loc + 30)
-# Removing the full text to make it a bit more manageable copute wise
+print('Japenese Books with a possible ISBN: ')
 
-Books_with_ISBN <- Books_with_ISBN %>% select(-Full_Text)
-
-head(Books_with_ISBN$ISBN)
+print(length(Books_with_ISBN$title))
 
 ```
