@@ -261,7 +261,11 @@ all_lang$ISBN <- ISBNs
 ISBN_books <-  all_lang %>% 
               filter(!is.na(ISBN))
 
+# saving ISBN_books as an r-file to save creating it again
+
 # tidying up to save some memory
+
+saveRDS(ISBN_books, 'ISBN_books.rds')
 
 rm(all_lang)
 
@@ -295,6 +299,8 @@ ISBN_pct_Table %>%
        subtitle = 'Extraction date: Sep 09 2021',   
        caption = 'Source: Kaggle, starter-wikibooks-dataset') +
   coord_flip() 
+
+
 
 ```
 
