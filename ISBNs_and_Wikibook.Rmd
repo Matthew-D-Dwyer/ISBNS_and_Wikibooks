@@ -73,7 +73,7 @@ library(RSQLite)
 ### Intro/Summary
 
 There is a Wikibooks data set available on
-[Kaggle](https://www.kaggle.com/dhruvildave/wikibooks-dataset) and I wanted to explore it a bit. I was able to extract the ISBN for a percentage of the books for all languages by looking for the first occurrence af the string "ISBN" and cleaning up the portion of text after that to take only numbers then ensure the result is the correct length.
+[Kaggle](https://www.kaggle.com/dhruvildave/wikibooks-dataset) and I wanted to explore it a bit. I was able to extract the ISBN for a percentage of the books for all languages by looking for the first occurrence af the string "ISBN" and cleaning up the portion of text after that. Taking only numbers then ensure the result is the correct length.
 
 The method extracted something that looks like an ISBN for about 2% of the books. 
 
@@ -83,7 +83,9 @@ The first thing I wanted to check is how many books there are in each of the dif
 
 This code threw errors on my machine indicating that not all rows were retrieved however I was able to check the source and my result is a full data set. 
 
-```{r dataload}
+Note also the full dataset is a couple of gigs so the script took a long timee to process on my MacBookPro, I didn't time it but could have been over an hour. 
+
+```{r dataload, warning = FALSE, message = FALSE}
 
 wb_data_base <- file.path('/Users',
                           'macatron',
@@ -165,13 +167,15 @@ Titles_table <- Titles_table %>%
    mutate(Language = factor(full_name, levels = Titles_table$full_name)) %>%
   rename(Titles = count....)
 
+dbDisconnect(con)
+
 ```
 
 ### Plotting the number of books in each language
 
 The vast majority of books are English, 
 
-```{r }
+```{r plot, warning = FALSE, message = FALSE }
 
 Titles_table %>%
   ggplot(aes(x = Language, y = Titles)) +
@@ -187,7 +191,11 @@ Titles_table %>%
 
 ### Creating a table of all the Books 
 
-```{r, warning = FALSE, message = FALSE}
+```{r table creaton, warning = FALSE, message = FALSE}
+
+# note this step takes quite a while on my MacBook, like 30 mimns. 
+
+con <- DBI::dbConnect(RSQLite::SQLite(), wb_data_base)
 
 Table_puller <- function(tbl_name) {table <- dbSendQuery(con,
                                                   paste0("SELECT  * FROM ",
@@ -202,13 +210,15 @@ Table_puller <- function(tbl_name) {table <- dbSendQuery(con,
   
 all_lang <- map_dfr(Languages$Abbv, Table_puller) 
 
+dbDisconnect(con)
+
 ```
 
 ### Extracking and cleaning the ISBNs
 
 The ISBNS are extracted and added to the data frame. 
 
-```{r warning = FALSE, message = FALSE}
+```{r Extracting ISBNs, warning = FALSE, message = FALSE}
 
 # function takes the whole text of a book and returns a cleaned ISBN number
 
@@ -259,16 +269,24 @@ rm(ISBNs)
 
 ```
 
-```{r, warning = FALSE, message = FALSE}
+```{r adding ISBN counts to original table plotting result, warning = FALSE, message = FALSE}
 
-Table <- Table %>% 
+Books_with_ISBN <- ISBN_books %>%
+  group_by(language) %>% 
+  summarise(ISBNs = n())
+
+
+Books_with_ISBN <- Books_with_ISBN %>% 
+  left_join(Titles_table, by = c('language' = 'Abbv'))
+
+ISBN_pct_Table <- Books_with_ISBN  %>% 
   mutate(ISBN_Pct = (ISBNs / Titles) * 100 %>% round(0)) %>%
   arrange(desc(ISBN_Pct))
 
-Table <- Table %>%
-  mutate(Language = factor(Language, levels = Table$Language))
+ISBN_pct_Table <- ISBN_pct_Table %>%
+  mutate(Language = factor(Language, levels = ISBN_pct_Table$Language))
 
-Table %>%
+ISBN_pct_Table %>%
   ggplot(aes(x = Language, y = ISBN_Pct)) +
   geom_col(fill = 'cornflower blue') +
   geom_label(aes(label = ISBN_Pct %>% round(2)), size = 2.5) +
