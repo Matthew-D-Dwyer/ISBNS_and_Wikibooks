@@ -1,6 +1,6 @@
 # ISBNS_and_Wikibooks
 
-A summary of this project is available here. 
+A summary of this project is available here, via the knitted markdown document. 
 
 I looked at the Wikibooks data set on Kaggle and found that though there were a lot of books the data set was hard to do anything with because there wasn't much meta data. 
 
