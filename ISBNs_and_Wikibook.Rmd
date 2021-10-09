@@ -69,6 +69,14 @@ library(RSQLite)
 
 ```
 
+
+### Intro/Summary
+
+There is a Wikibooks data set available on
+[Kaggle](https://www.kaggle.com/dhruvildave/wikibooks-dataset) and I wanted to explore it a bit. I was able to extract the ISBN for a percentage of the books for all languages by looking for the first occurrence af the string "ISBN" and cleaning up the portion of text after that to take only numbers then ensure the result is the correct length.
+
+The method extracted something that looks like an ISBN for about 2% of the books. 
+
 ### How many books? 
 
 The first thing I wanted to check is how many books there are in each of the different languages.
@@ -161,7 +169,7 @@ Titles_table <- Titles_table %>%
 
 ### Plotting the number of books in each language
 
-The vast majority of books are English 
+The vast majority of books are English, 
 
 ```{r }
 
@@ -179,7 +187,7 @@ Titles_table %>%
 
 ### Creating a table of all the Books 
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 
 Table_puller <- function(tbl_name) {table <- dbSendQuery(con,
                                                   paste0("SELECT  * FROM ",
@@ -195,10 +203,12 @@ Table_puller <- function(tbl_name) {table <- dbSendQuery(con,
 all_lang <- map_dfr(Languages$Abbv, Table_puller) 
 
 ```
+
 ### Extracking and cleaning the ISBNs
 
+The ISBNS are extracted and added to the data frame. 
 
-```{r }
+```{r warning = FALSE, message = FALSE}
 
 # function takes the whole text of a book and returns a cleaned ISBN number
 
@@ -219,7 +229,7 @@ ISBN_puller <- function(book_text) {
                       unlist() %>% 
                       str_c(collapse = '') 
     
-    if (nchar(clean_ISBN) > 13 ) {
+    if (nchar(clean_ISBN) >= 13 ) {
       
       clean_ISBN <- substr(clean_ISBN, 1, 13) }
     
@@ -249,7 +259,7 @@ rm(ISBNs)
 
 ```
 
-```{r}
+```{r, warning = FALSE, message = FALSE}
 
 Table <- Table %>% 
   mutate(ISBN_Pct = (ISBNs / Titles) * 100 %>% round(0)) %>%
@@ -270,3 +280,12 @@ Table %>%
 
 ```
 
+### Results
+
+I thought this would work for a higher percentage of books, but I was pleased the method worked for all languages, especially that it worked for Japanese.
+
+### Next steps 
+
+Apply the method to the HTML text for the book rather than the full text. 
+
+Link the ISBN number to a library data base to add additional information to the books such as author, subject etc. 
