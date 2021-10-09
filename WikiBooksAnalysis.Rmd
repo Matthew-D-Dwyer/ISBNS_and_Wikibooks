@@ -400,8 +400,50 @@ for (i in 1:length(all_books$title)) {
      
    } }
 
-print('Japenese Books with a possible ISBN: ')
+print('Japenese Books with a possible ISBN:')
 
 print(length(Books_with_ISBN$title))
 
 ```
+```{r}
+
+indexes <- Books_with_ISBN$Book_no 
+
+ISBN_Loc <- Books_with_ISBN$ISBN_Loc
+
+isbn <- c()
+
+Books_with_ISBN$Full_Text <- all_books$body_text[indexes]
+
+Books_with_ISBN$ISBN <- substr(Books_with_ISBN$Full_Text, 
+                               Books_with_ISBN$ISBN_Loc,
+                               Books_with_ISBN$ISBN_Loc + 30)
+# Removing the full text to make it a bit more manageable copute wise
+
+Books_with_ISBN <- Books_with_ISBN %>% select(-Full_Text)
+
+head(Books_with_ISBN$ISBN)
+
+Books_with_ISBN$ISBN_clean <- map_chr(Books_with_ISBN$ISBN, 
+                                     isbn_cleaner)
+
+Books_with_ISBN$ISBN_clean[1:20]
+
+```
+
+It works for Japanese too! 
+
+# Creating a meta data table for all languages 
+
+```{r}
+
+ISBN_puller <- function(book_text) {
+  
+  ISBN_Loc <- str_locate(book_text, 'ISBN')
+    
+  unclean_ISBN <- substr(book_text, 
+                        ISBN_Loc,
+                        ISBN_Loc + 30)} 
+
+```
+
