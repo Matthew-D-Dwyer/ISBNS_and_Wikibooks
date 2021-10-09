@@ -1,0 +1,272 @@
+---
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+  number_sections: true
+ 
+title: "Adding ISBNs to Wiki books"
+author: "[Matthew-D-Dwyer](https://github.com/Matthew-D-Dwyer)"
+date: "`r paste0('Last Run: ', format(Sys.time(), '%A %d-%B-%Y'))`"
+params: 
+  param1: "Don't Forget about params"
+
+---
+
+<style>
+
+#TOC {
+ font-family: Calibri; 
+ font-size: 16px;
+ border-color: #3D68DF;
+ background: #3D68DF;
+}
+
+body {
+  font-family: Garamond;
+  font-size: 16px; 
+  border-color: #D0D0D0;
+  background-color: #D0D0D0;
+  color: #1A1A1A;
+}
+
+pre {
+  color: #1A1A1A
+  background: #D0D0D0;
+  background-color: #D0D0D0
+  font-family: Calibri; 
+  
+}
+
+</style>
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+knitr::opts_chunk$set(collapse = TRUE)
+
+knitr::opts_chunk$set(warning = TRUE)
+
+knitr::opts_chunk$set(message = TRUE)
+
+knitr::opts_chunk$set(include = TRUE)
+
+custom_black <- '1A1A1A'
+custom_white <- 'C0C0C0'
+custom_grey_dark <- '6F6F6F'
+custom_grey_light <- 'B2B2B2'
+custom_accent_blue <- '3D6BFF'
+
+```
+
+```{r libraries etc., message = FALSE }
+
+library(tidyverse)
+library(dplyr)
+library(RSQLite)
+
+```
+
+### How many books? 
+
+The first thing I wanted to check is how many books there are in each of the different languages.
+
+This code threw errors on my machine indicating that not all rows were retrieved however I was able to check the source and my result is a full data set. 
+
+```{r dataload}
+
+wb_data_base <- file.path('/Users',
+                          'macatron',
+                          'Documents',
+                          'Data Analysis',
+                          'R',
+                          'wiki--books',
+                          'wikibooks.sqlite')
+
+#creating connection
+con <- DBI::dbConnect(RSQLite::SQLite(), wb_data_base)
+
+# Lookup to get the full language from the two character part 
+Languages <- data.frame(Abbv = c('de',
+                                 'en',
+                                 'es',
+                                 'fr',
+                                 'he',
+                                 'hu',
+                                 'it',
+                                 'ja',
+                                 'nl',
+                                 'pl',
+                                 'pt',
+                                 'ru'), 
+                        full_name = c('German', 
+                                      'English', 
+                                      'Spanish', 
+                                      'French', 
+                                      'Greek',
+                                      'Hungarian',
+                                      'Italian',
+                                      'Japanese',
+                                      'Dutch',
+                                      'Polish',
+                                      'Portuguese',
+                                      'Russian'))
+
+names_stripper <- function(full_title) 
+  #Function that removes 'Wikibooks: ' from the start of the title and everything after and including the first slash
+{
+  title_no_prefix <- full_title %>%
+  str_remove_all('Wikibooks: ')
+  
+  slash_loc <- str_locate(title_no_prefix, '/')[1]
+  
+  if (is.na(slash_loc)) {
+    title_no_suffix <- title_no_prefix } 
+  
+  else if (slash_loc > 0) {
+  title_no_suffix <- title_no_prefix %>%
+                     str_sub(1, slash_loc-1)} else {
+      print('Error Error Does Not Compute')
+      title_no_suffix <- 'Error Error Does Not Compute'
+    }
+  
+  title_no_suffix }
+
+title_counter <- function(languages_brv) 
+  # function that counts how many titles there ar in the data base for that language 
+{
+  
+  con <-  DBI::dbConnect(RSQLite::SQLite(), wb_data_base)   
+  
+  x <- dbSendQuery(con, paste0("SELECT count (*) FROM ", languages_brv), n = Inf) %>%
+    dbFetch(n =Inf)
+  
+  x <- data.frame(titles = x, Abbv = languages_brv)
+  
+}
+  
+Titles_table <- map_dfr(Languages$Abbv, title_counter)
+
+Titles_table <- Titles_table %>%
+  left_join(Languages, by = c('Abbv' = 'Abbv')) %>%
+  arrange(desc(count....)) 
+
+Titles_table <- Titles_table %>%
+   mutate(Language = factor(full_name, levels = Titles_table$full_name)) %>%
+  rename(Titles = count....)
+
+```
+
+### Plotting the number of books in each language
+
+The vast majority of books are English 
+
+```{r }
+
+Titles_table %>%
+  ggplot(aes(x = Language, y = Titles)) +
+  geom_col(fill = 'cornflower blue') +
+  geom_label(aes(label = Titles), size = 2.5) +
+  theme_minimal() +
+  labs(title = 'Wikibooks Number of Titles by Language', 
+       subtitle = 'Extraction date: Sep 09 2021',   
+       caption = 'Source: Kaggle, starter-wikibooks-dataset') +
+  coord_flip() 
+
+```
+
+### Creating a table of all the Books 
+
+```{r}
+
+Table_puller <- function(tbl_name) {table <- dbSendQuery(con,
+                                                  paste0("SELECT  * FROM ",
+                                                         tbl_name), 
+                                                  n = Inf) %>%
+                                      dbFetch(n =Inf)
+  
+                                      table$language <- tbl_name
+                                      
+                                      table
+                                      }
+  
+all_lang <- map_dfr(Languages$Abbv, Table_puller) 
+
+```
+### Extracking and cleaning the ISBNs
+
+
+```{r }
+
+# function takes the whole text of a book and returns a cleaned ISBN number
+
+ISBN_puller <- function(book_text) {
+  
+   clean_ISBN <- NA
+    
+   ISBN_Loc <- str_locate(book_text, 'ISBN')[1]
+   
+  if (is.na(ISBN_Loc)) {NA} else {
+    
+    un_clean_ISBN <- substr(book_text, 
+                          ISBN_Loc,
+                          ISBN_Loc + 30)
+    
+    clean_ISBN <-  un_clean_ISBN %>% 
+                      str_extract_all("[0-9]") %>%
+                      unlist() %>% 
+                      str_c(collapse = '') 
+    
+    if (nchar(clean_ISBN) > 13 ) {
+      
+      clean_ISBN <- substr(clean_ISBN, 1, 13) }
+    
+    else if (nchar(clean_ISBN) >= 10) {
+      
+      clean_ISBN <- substr(clean_ISBN, 1, 10) } else { 
+        
+      clean_ISBN <- NA}
+    
+    
+  }
+   clean_ISBN
+   } 
+
+ISBNs <- map_chr(all_lang$body_text, ISBN_puller)
+
+all_lang$ISBN <- ISBNs
+
+ISBN_books <-  all_lang %>% 
+              filter(!is.na(ISBN))
+
+# tidying up to save some memory
+
+rm(all_lang)
+
+rm(ISBNs)
+
+```
+
+```{r}
+
+Table <- Table %>% 
+  mutate(ISBN_Pct = (ISBNs / Titles) * 100 %>% round(0)) %>%
+  arrange(desc(ISBN_Pct))
+
+Table <- Table %>%
+  mutate(Language = factor(Language, levels = Table$Language))
+
+Table %>%
+  ggplot(aes(x = Language, y = ISBN_Pct)) +
+  geom_col(fill = 'cornflower blue') +
+  geom_label(aes(label = ISBN_Pct %>% round(2)), size = 2.5) +
+  theme_minimal() +
+  labs(title = 'Wikibooks Percent With Extractable ISBN by Language', 
+       subtitle = 'Extraction date: Sep 09 2021',   
+       caption = 'Source: Kaggle, starter-wikibooks-dataset') +
+  coord_flip() 
+
+```
+
