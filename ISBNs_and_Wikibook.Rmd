@@ -2,12 +2,12 @@
 output: 
   html_document:
     toc: true
-    toc_float:
+    toc_float: 
       collapsed: false
   number_sections: true
  
-title: "Adding ISBNs to Wiki books"
-author: "[Matthew-D-Dwyer](https://github.com/Matthew-D-Dwyer)"
+title: ""
+author: "[User-764Q](https://github.com/User-764Q)"
 date: "`r paste0('Last Run: ', format(Sys.time(), '%A %d-%B-%Y'))`"
 params: 
   param1: "Don't Forget about params"
